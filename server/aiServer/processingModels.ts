@@ -6,6 +6,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod/v3';
 import { helper } from '@shared/lib/helper';
 import type { ProcessingEffect, ProcessingModels } from './noteProcessing';
+import { generatedTagEffects } from './tagProcessing';
 
 export const processingModels: ProcessingModels = {
   async transcribe(audio, modelId) {
@@ -32,9 +33,8 @@ export const processingModels: ProcessingModels = {
     }
     if (step === 'tags') {
       const agent = await AiModelFactory.TagAgent(state.prompts.tags || undefined);
-      const result = await agent.generate(`Existing tags list: [${tagPaths.join(', ')}]\nNote content:\n${note.content}`, { abortSignal: signal });
-      const tags = result.text.split(',').map(t => t.trim()).filter(t => /^#[^\s#]+$/.test(t)).slice(0, 5);
-      return tags.length ? [{ kind: 'tags', content: tags.join(' ') }] : [];
+      const result = await agent.generate(`Existing tags list: [${tagPaths.join(', ')}]\nNote content:\n${note.content}\nReturn at most 5 hashtags as plain text. Hierarchical tags use #Parent/Child.`, { abortSignal: signal });
+      return generatedTagEffects(result.text, note.content);
     }
 
     // Tools collect local effects only. The worker commits effects and checkpoint

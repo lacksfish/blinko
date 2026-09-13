@@ -18,13 +18,6 @@ import { createProcessingState, NoteProcessingJob, readProcessingState } from '.
 import { isAudioAttachment, isVoiceRecording, mergeTranscriptAppend } from '../aiServer/noteProcessing';
 import { TRPCError } from '@trpc/server';
 
-const extractHashtags = (input: string): string[] => {
-  const withoutCodeBlocks = input.replace(/```[\s\S]*?```/g, '');
-  const hashtagRegex = /(?<!:\/\/)(?<=\s|^)#[^\s#]+(?=\s|$)/g;
-  const matches = withoutCodeBlocks.match(hashtagRegex);
-  return matches ? matches : [];
-};
-
 export const noteRouter = router({
   list: authProcedure
     .meta({ openapi: { method: 'POST', path: '/v1/note/list', summary: 'Query notes list', protect: true, tags: ['Note'] } })
@@ -905,7 +898,7 @@ export const noteRouter = router({
         }
       }
 
-      let tagTree = helper.buildHashTagTreeFromHashString(extractHashtags(content?.replace(/\\/g, '') + ' '));
+      let tagTree = helper.buildHashTagTreeFromHashString(helper.extractHashtags(content?.replace(/\\/g, '') + ' '));
       let newTags: Prisma.tagCreateManyInput[] = [];
       const config = await getGlobalConfig({ ctx });
 
@@ -985,7 +978,7 @@ export const noteRouter = router({
           if (merged === null) throw new TRPCError({ code: 'CONFLICT', message: 'The note changed while you were editing. Your draft has been kept; reload the note before saving again.' });
           content = merged;
           update.content = merged;
-          tagTree = helper.buildHashTagTreeFromHashString(extractHashtags(merged.replace(/\\/g, '') + ' '));
+          tagTree = helper.buildHashTagTreeFromHashString(helper.extractHashtags(merged.replace(/\\/g, '') + ' '));
         }
 
         if (existingNote && content != null && content !== existingNote.content) {

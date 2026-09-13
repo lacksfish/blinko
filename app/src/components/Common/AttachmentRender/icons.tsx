@@ -14,6 +14,7 @@ import { eventBus } from '@/lib/event';
 import { getBlinkoEndpoint } from '@/lib/blinkoEndpoint';
 import axiosInstance from '@/lib/axios';
 import { downloadFromLink } from '@/lib/tauriHelper';
+import type { MouseEvent } from 'react';
 export const DeleteIcon = observer(({ className, file, files, size = 20 }: { className: string, file: FileType, files: FileType[], size?: number }) => {
   const store = RootStore.Local(() => ({
     deleteFile: new PromiseState({
@@ -39,7 +40,7 @@ export const DeleteIcon = observer(({ className, file, files, size = 20 }: { cla
       onConfirm={async e => {
         store.deleteFile.call(file)
       }}>
-      <div className={`opacity-70 hover:opacity-100 bg-black cursor-pointer rounded-sm transition-al ${className}`}>
+      <div onClick={event => event.stopPropagation()} className={`opacity-70 hover:opacity-100 bg-black cursor-pointer rounded-sm transition-al ${className}`}>
         <Icon className='!text-white' icon="basil:cross-solid" width={size} height={size} />
       </div>
     </TipsPopover >
@@ -60,12 +61,24 @@ export const InsertConextButton = observer(({ className, file, files, size = 20 
   </>
 })
 
-export const DownloadIcon = observer(({ className, file, size = 20 }: { className?: string, file: FileType, size?: number }) => {
-  return <div className={`hidden p-1 group-hover:block !transition-all absolute z-10 right-[5px] top-[5px] !text-background opacity-70 hover:opacity-100 !bg-foreground cursor-pointer rounded-sm !transition-all ${className}`}>
-    <Icon onClick={() => {
-      downloadFromLink(getBlinkoEndpoint(file.uploadPromise.value));
-    }} icon="tabler:download" width="15" height="15" />
-  </div>
+export const DownloadIcon = observer(({ className, file, inline = false }: { className?: string, file: FileType, size?: number, inline?: boolean }) => {
+  const { t } = useTranslation();
+  const download = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    downloadFromLink(getBlinkoEndpoint(file.uploadPromise.value));
+  };
+
+  return <Tooltip content={t('download')}>
+    <button
+      type="button"
+      aria-label={t('download')}
+      onClick={download}
+      className={`${inline ? 'shrink-0' : 'hidden group-hover:block group-focus-within:block absolute z-10 right-[5px] top-[5px]'} p-1 !text-background opacity-70 hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary !bg-foreground cursor-pointer rounded-sm !transition-all ${className || ''}`}
+    >
+      <Icon aria-hidden="true" icon="tabler:download" width="15" height="15" />
+    </button>
+  </Tooltip>
 })
 
 export const CopyIcon = observer(({ className, file, size = 20 }: { className?: string, file: FileType, size?: number }) => {

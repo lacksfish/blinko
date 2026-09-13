@@ -55,8 +55,7 @@ export async function canProcessNote(tx: Prisma.TransactionClient, noteId: numbe
 }
 
 async function syncTags(tx: Prisma.TransactionClient, noteId: number, accountId: number, content: string) {
-  const withoutCode = content.replace(/```[\s\S]*?```/g, '');
-  const tags = withoutCode.match(/(?<!:\/\/)(?<=\s|^)#[^\s#]+(?=\s|$)/g) || [];
+  const tags = helper.extractHashtags(content);
   const ids: number[] = [];
   async function visit(nodes: TagTreeNode[], parent = 0) {
     for (const node of nodes) {

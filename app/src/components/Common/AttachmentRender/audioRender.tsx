@@ -378,7 +378,7 @@ export const AudioRender = observer(({ files, preview = false }: Props) => {
         className="group"
       >
         <div
-          className="flex items-center gap-3 p-3 bg-blue-500/10 hover:bg-blue-500/20 rounded-2xl cursor-pointer transition-all duration-200 max-w-xs"
+          className="relative flex items-center gap-3 p-3 bg-blue-500/10 hover:bg-blue-500/20 rounded-2xl cursor-pointer transition-all duration-200 max-w-xs"
           onClick={toggleVoicePlay}
         >
           {/* Play button */}
@@ -438,6 +438,7 @@ export const AudioRender = observer(({ files, preview = false }: Props) => {
           )}
           {preview && (
             <DownloadIcon
+              inline
               className="ml-1 text-gray-400 hover:text-blue-500"
               file={file}
             />
