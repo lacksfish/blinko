@@ -11,8 +11,11 @@ import { ModelCapabilities } from '@server/aiServer/types';
 import { aiProviders, aiModels } from '@shared/lib/prismaZodType';
 import { fetchWithProxy } from '@server/lib/proxy';
 import { inferModelCapabilities } from '@shared/lib/modelTemplates';
+import { processingControl, processingStatus } from './noteProcessing';
 
 export const aiRouter = router({
+  processingControl,
+  processingStatus,
   embeddingUpsert: authProcedure
     .input(z.object({
       id: z.number(),

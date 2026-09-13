@@ -27,28 +27,19 @@ import { aiModels } from '@shared/index';
 import { MastraVoice } from '@mastra/core/voice';
 
 export class AiModelFactory {
-  static async queryAndDeleteVectorById(targetId: number) {
+  static async queryAndDeleteVectorById(targetId: number, noteOnly = false) {
     const { VectorStore } = await AiModelFactory.GetProvider();
     try {
       const query = `
-          WITH target_record AS (
-            SELECT vector_id 
-            FROM 'blinko'
-            WHERE metadata->>'id' = ? 
-            LIMIT 1
-          )
           DELETE FROM 'blinko'
-          WHERE vector_id IN (SELECT vector_id FROM target_record)
+          WHERE metadata->>'id' = ?
+            AND (? = 0 OR COALESCE(metadata->>'isAttachment', 0) = 0)
           RETURNING *;`;
       //@ts-ignore
       const result = await VectorStore.turso.execute({
         sql: query,
-        args: [targetId],
+        args: [targetId, noteOnly ? 1 : 0],
       });
-
-      if (result.rows.length === 0) {
-        throw new Error(`id  ${targetId} is not found`);
-      }
 
       return {
         success: true,
@@ -329,7 +320,7 @@ export class AiModelFactory {
       }
     };
   }
-  static async BaseChatAgent({ withTools = true, withOnlineSearch = false, withMcpTools = true, extraInstructions }: { withTools?: boolean; withOnlineSearch?: boolean; withMcpTools?: boolean; extraInstructions?: string }) {
+  static async BaseChatAgent({ withTools = true, withOnlineSearch = false, withMcpTools = true, extraInstructions, localTools }: { withTools?: boolean; withOnlineSearch?: boolean; withMcpTools?: boolean; extraInstructions?: string; localTools?: Record<string, any> }) {
     const provider = await AiModelFactory.GetProvider();
     let tools: Record<string, any> = {};
     if (withTools) {
@@ -348,14 +339,17 @@ export class AiModelFactory {
         },
       };
     }
-    if (withOnlineSearch) {
+    // Processing jobs supply staged, note-scoped tools. They must not inherit MCP or
+    // generic tools with immediate external side effects.
+    if (localTools) tools = { tools: localTools };
+    if (withOnlineSearch && !localTools) {
       tools = {
         tools: { ...tools?.tools, webSearchTool },
       };
     }
 
     // Load MCP tools if enabled
-    if (withMcpTools && withTools) {
+    if (withMcpTools && withTools && !localTools) {
       try {
         const hasMcp = await hasMcpServers();
         if (hasMcp) {
