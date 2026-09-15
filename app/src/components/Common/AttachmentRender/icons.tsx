@@ -15,34 +15,46 @@ import { getBlinkoEndpoint } from '@/lib/blinkoEndpoint';
 import axiosInstance from '@/lib/axios';
 import { downloadFromLink } from '@/lib/tauriHelper';
 import type { MouseEvent } from 'react';
-export const DeleteIcon = observer(({ className, file, files, size = 20 }: { className: string, file: FileType, files: FileType[], size?: number }) => {
+export const DeleteIcon = observer(({ className, file, files, size = 20, voice = false }: { className: string, file: FileType, files: FileType[], size?: number, voice?: boolean }) => {
   const store = RootStore.Local(() => ({
     deleteFile: new PromiseState({
       function: async (file) => {
         const path = file.uploadPromise?.value;
         if (path) {
-          await axiosInstance.post(getBlinkoEndpoint('/api/file/delete'), {
-            attachment_path: path,
-          });
+          try {
+            await axiosInstance.post(getBlinkoEndpoint('/api/file/delete'), { attachment_path: path });
+          } catch (error) {
+            // A stale draft must still be removable if its upload is already gone.
+            if (!voice || (error as any)?.response?.status !== 404) throw error;
+          }
         }
-        const index = files.findIndex(i => i.name == file.name)
-        files.splice(index, 1)
-        RootStore.Get(DialogStandaloneStore).close()
+        const index = files.indexOf(file)
+        if (index >= 0) files.splice(index, 1)
+        if (!voice) RootStore.Get(DialogStandaloneStore).close()
         RootStore.Get(ToastPlugin).success(t('delete-success'))
         RootStore.Get(BlinkoStore).removeCreateAttachments(file)
+        return true;
       }
     })
   }))
 
   const { t } = useTranslation()
   return <>
-    <TipsPopover isLoading={store.deleteFile.loading.value} content={t('this-operation-will-be-delete-resource-are-you-sure')}
+    <TipsPopover keepParentOpen={voice} isLoading={store.deleteFile.loading.value} content={t('this-operation-will-be-delete-resource-are-you-sure')}
       onConfirm={async e => {
-        store.deleteFile.call(file)
+        return (await store.deleteFile.call(file)) === true;
       }}>
-      <div onClick={event => event.stopPropagation()} className={`opacity-70 hover:opacity-100 bg-black cursor-pointer rounded-sm transition-al ${className}`}>
-        <Icon className='!text-white' icon="basil:cross-solid" width={size} height={size} />
-      </div>
+      <button type="button" aria-label={t('delete')} title={t('delete')} disabled={store.deleteFile.loading.value || file.uploadPromise?.loading?.value}
+        onClick={event => event.stopPropagation()}
+        className={`cursor-pointer rounded-sm transition-al focus-visible:ring-2 focus-visible:ring-primary ${voice ? 'voice-attachment-remove !bg-transparent p-2' : 'bg-black opacity-70 hover:opacity-100'} ${className}`}>
+        {voice ? (
+          <span className="flex bg-black rounded-sm pointer-events-none">
+            <Icon className='!text-white' icon="basil:cross-solid" width={size} height={size} />
+          </span>
+        ) : (
+          <Icon className='!text-white' icon="basil:cross-solid" width={size} height={size} />
+        )}
+      </button>
     </TipsPopover >
   </>
 })
