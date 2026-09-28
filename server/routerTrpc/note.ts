@@ -16,6 +16,7 @@ import { AiModelFactory } from '@server/aiServer/aiModelFactory';
 import { authProcedure, demoAuthMiddleware, publicProcedure, router } from '@server/middleware';
 import { createProcessingState, NoteProcessingJob, readProcessingState } from '../jobs/noteProcessingJob';
 import { isAudioAttachment, isVoiceRecording, mergeTranscriptAppend } from '../aiServer/noteProcessing';
+import { inlineTagIds } from '../aiServer/tagProcessing';
 import { TRPCError } from '@trpc/server';
 
 export const noteRouter = router({
@@ -956,6 +957,7 @@ export const noteRouter = router({
       }
 
       if (id) {
+        let previousContent = '';
         const note = await prisma.$transaction(async tx => {
         await tx.$queryRaw`SELECT id FROM notes WHERE id = ${id} FOR UPDATE`;
         const existingNote = await tx.notes.findUnique({
@@ -971,6 +973,7 @@ export const noteRouter = router({
           }
         });
 
+        previousContent = existingNote?.content || '';
         if (existingNote && content != null && input.expectedContent !== undefined) {
           const processing = await tx.noteProcessing.findUnique({ where: { noteId: id } });
           const merged = mergeTranscriptAppend(input.expectedContent, content, existingNote.content,
@@ -1019,6 +1022,7 @@ export const noteRouter = router({
         const oldTagsInThisNote = await prisma.tagsToNote.findMany({ where: { noteId: note.id }, include: { tag: true } });
         await handleAddTags(tagTree, undefined, note.id);
         const oldTags = oldTagsInThisNote.map((i) => i.tag).filter((i) => !!i);
+        const previousInlineTags = inlineTagIds(previousContent, oldTags);
         const oldTagsString = oldTags.map((i) => `${i?.name}<key>${i?.parent}`);
         const newTagsString = newTags.map((i) => `${i?.name}<key>${i?.parent}`);
         const needTobeAddedRelationTags = _.difference(newTagsString, oldTagsString);
@@ -1062,7 +1066,7 @@ export const noteRouter = router({
                       const [name, parent] = i.split('<key>');
                       return oldTags.find((t) => t?.name == name && t?.parent == Number(parent))!.id;
                     })
-                    .filter((i) => !!i),
+                    .filter((i) => !!i && previousInlineTags.has(i)),
                 },
               },
             },

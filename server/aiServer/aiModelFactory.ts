@@ -381,7 +381,9 @@ export class AiModelFactory {
       "Always respond in the user's language.\n" +
       'Maintain a friendly and professional conversational tone.';
 
-    const baseInstructions = `Today is ${dayjs().format('YYYY-MM-DD HH:mm:ss')}\n` + globalConfig.globalPrompt || defaultInstructions;
+    const baseInstructions = globalConfig.globalPrompt
+      ? `Today is ${dayjs().format('YYYY-MM-DD HH:mm:ss')}\n${globalConfig.globalPrompt}`
+      : defaultInstructions;
     const instructions = extraInstructions ? `${baseInstructions}\n\n${extraInstructions}` : baseInstructions;
 
     const BlinkoAgent = new Agent({
@@ -434,7 +436,7 @@ export class AiModelFactory {
   static TagAgent = AiModelFactory.#createAgentFactory(
     'Blinko Tagging Agent',
     (customPrompt?: string) => {
-      const outputContract = 'Return at most 5 hashtags as plain text. Each tag must start with #; hierarchical tags use #Parent/Child. Do not return prose, JSON, code blocks, or Markdown formatting.';
+      const outputContract = 'Return hashtags as plain text, respecting the requested tag count. Each tag must start with #; hierarchical tags use #Parent/Child. The application saves these as real tags. Do not return prose, JSON, code blocks, or Markdown formatting.';
       if (customPrompt) {
         return `${customPrompt}\n\n${outputContract}`;
       }

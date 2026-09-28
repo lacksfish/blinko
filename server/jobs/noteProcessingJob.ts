@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
 import { getPgBoss } from '../lib/pgBoss';
 import { processingModels } from '../aiServer/processingModels';
@@ -32,6 +32,7 @@ export function createProcessingState(config: GlobalConfig, requestedBy: number,
     audio: audio.map(a => ({ id: a.id, path: a.path, name: a.name, status: 'pending' })),
     post: options?.manual || !!config.isUseAiPostProcessing,
     mode: config.aiPostProcessingMode || 'comment',
+    customAction: config.aiCustomAction || 'tools',
     prompts: { comment: config.aiCommentPrompt, tags: config.aiTagsPrompt, smartEdit: config.aiSmartEditPrompt, custom: config.aiCustomPrompt },
     done: [],
   };
@@ -66,7 +67,8 @@ async function syncTags(tx: Prisma.TransactionClient, noteId: number, accountId:
     }
   }
   await visit(helper.buildHashTagTreeFromHashString(tags));
-  await tx.tagsToNote.deleteMany({ where: { noteId, tagId: { notIn: ids } } });
+  // Processing adds relations independently of the visible body. Never remove
+  // existing/manual/AI tags when a transcript or an edited body is saved.
   await tx.tagsToNote.createMany({ data: ids.map(tagId => ({ noteId, tagId })), skipDuplicates: true });
 }
 
@@ -136,6 +138,9 @@ export function createProcessingStore(noteId: number, token: string): Processing
       await mutate(async (tx, note, state) => {
         if (state.done.includes(step)) return;
         const changed = note.content !== source;
+        // A concurrent human edit must never be overwritten or turned into a
+        // comment. Leave the step retryable, before committing any effects.
+        if (changed && effects.length) throw new Error('NOTE_CHANGED');
         let commented = false;
         for (const effect of effects) {
           if (!effect.content.trim()) continue;
@@ -143,15 +148,13 @@ export function createProcessingStore(noteId: number, token: string): Processing
             const created = await tx.notes.create({ data: { content: effect.content, accountId: note.accountId, type: effect.type || 0 } });
             await syncTags(tx, created.id, note.accountId!, created.content);
           } else if (effect.kind === 'tags') {
-            await writeContent(tx, note, `${note.content}\n\n${effect.content}`);
-          } else if (effect.kind === 'replace' && !changed && state.audio.every(a => !a.text || effect.content.includes(a.text))) {
+            await syncTags(tx, note.id, note.accountId!, effect.content);
+          } else if (effect.kind === 'replace') {
             await writeContent(tx, note, effect.content);
           } else {
-            // A stale or destructive rewrite becomes a suggestion, never a lost edit.
             await tx.comments.create({ data: {
               noteId, guestName: 'Blinko AI', guestIP: '', guestUA: '',
-              content: effect.kind === 'replace'
-                ? `AI suggestion (original note preserved):\n\n${effect.content}` : effect.content,
+              content: effect.content,
             } });
             commented = true;
           }
@@ -162,6 +165,11 @@ export function createProcessingStore(noteId: number, token: string): Processing
         } });
         state.done.push(step);
         delete state.postError;
+        if (process.env.NOTE_PROCESSING_DEBUG === '1') console.info('note-processing', {
+          noteId, postProcessingMode: state.mode, phase: step,
+          selectedAction: effects.map(effect => effect.kind),
+          noteUpdateApplied: note.content !== source, commentCreated: commented,
+        });
       });
     },
     postFailed: async code => { await mutate(async (_tx, _note, state) => { state.postError = code; }); },

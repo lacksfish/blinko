@@ -1,4 +1,9 @@
 {
+  "comment-and-tags": "Comment + Tags",
+  "smart-edit-and-tags": "Smart Edit + Tags",
+  "smart-edit-replace-help": "Automatically replaces the note text. Audio, tags and revision history are preserved. No comment is created.",
+  "custom-processing-action": "Custom result action",
+  "custom-processing-tools": "Tool actions (requires tool calls)",
   "note-processing-title": "Audio & AI",
   "note-processing-automatic-help": "Automatically process newly created notes.",
   "note-processing-voice-help": "For attached voice recordings, AI post-processing waits until transcription is saved. Existing text is preserved; transcripts are separated by a line. Music and other audio uploads are only transcribed on request. Retry or skip transcription from Audio & AI on the note.",

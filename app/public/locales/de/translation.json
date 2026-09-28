@@ -1,4 +1,9 @@
 {
+  "comment-and-tags": "Kommentar + Tags",
+  "smart-edit-and-tags": "Intelligente Bearbeitung + Tags",
+  "smart-edit-replace-help": "Ersetzt automatisch den Notiztext. Audio, Tags und Versionsverlauf bleiben erhalten. Es entsteht kein Kommentar.",
+  "custom-processing-action": "Aktion f?r das Ergebnis",
+  "custom-processing-tools": "Tool-Aktionen (Tool-Aufrufe erforderlich)",
   "note-processing-title": "Audio & KI",
   "note-processing-automatic-help": "Neue Notizen automatisch nachbearbeiten.",
   "note-processing-voice-help": "Bei angehängten Sprachaufnahmen wartet die KI-Nachbearbeitung, bis die Transkription gespeichert ist. Vorhandener Text bleibt erhalten; Transkripte werden durch eine Linie getrennt. Musik und andere Audio-Uploads werden nur auf Wunsch transkribiert. Über Audio & KI an der Notiz kannst du die Transkription wiederholen oder überspringen.",

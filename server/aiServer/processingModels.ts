@@ -6,7 +6,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod/v3';
 import { helper } from '@shared/lib/helper';
 import type { ProcessingEffect, ProcessingModels } from './noteProcessing';
-import { generatedTagEffects } from './tagProcessing';
+import { generatedTagEffects, withoutTagOnlyLines } from './tagProcessing';
 
 export const processingModels: ProcessingModels = {
   async transcribe(audio, modelId) {
@@ -29,12 +29,21 @@ export const processingModels: ProcessingModels = {
         { role: 'user', content: state.prompts.comment || 'Analyze the following note content and provide a brief summary.' },
         { role: 'user', content: `Note content: ${note.content}` },
       ], { abortSignal: signal });
+      if (!result.text.trim()) throw new Error('NO_PROCESSING_ACTION');
+      if (process.env.NOTE_PROCESSING_DEBUG === '1') console.info('note-processing', {
+        noteId: note.id, postProcessingMode: state.mode, phase: step,
+        toolsOffered: [], toolChoice: 'none', modelReturnedToolCalls: false, selectedAction: 'create-comment',
+      });
       return [{ kind: 'comment', content: result.text.trim() }];
     }
     if (step === 'tags') {
       const agent = await AiModelFactory.TagAgent(state.prompts.tags || undefined);
-      const result = await agent.generate(`Existing tags list: [${tagPaths.join(', ')}]\nNote content:\n${note.content}\nReturn at most 5 hashtags as plain text. Hierarchical tags use #Parent/Child.`, { abortSignal: signal });
-      return generatedTagEffects(result.text, note.content);
+      const result = await agent.generate(`Existing tags list: [${tagPaths.join(', ')}]\nNote content:\n${note.content}\nReturn only hashtags as plain text. Hierarchical tags use #Parent/Child. The application saves them as tag relations without modifying the note text.`, { abortSignal: signal });
+      if (process.env.NOTE_PROCESSING_DEBUG === '1') console.info('note-processing', {
+        noteId: note.id, postProcessingMode: state.mode, phase: step,
+        toolsOffered: [], toolChoice: 'none', modelReturnedToolCalls: false, selectedAction: 'apply-tags',
+      });
+      return generatedTagEffects(result.text, note.content, state.prompts.tags ? undefined : 5, tagPaths);
     }
 
     // Tools collect local effects only. The worker commits effects and checkpoint
@@ -43,10 +52,13 @@ export const processingModels: ProcessingModels = {
     const localTools = {
       updateBlinkoTool: createTool({
         id: 'processing-update-note',
-        description: 'Propose an update to the current note. Keep original transcripts intact.',
+        description: 'Replace the current note body. Attachments, tags and the previous body in revision history are preserved by the application.',
         inputSchema: z.object({ id: z.number(), content: z.string() }),
         execute: async ({ context }) => {
           if (context.id !== note.id) throw new Error('Only the current note can be updated');
+          // Multiple tool rounds may refine the same body; commit only the last.
+          const previous = effects.findIndex(effect => effect.kind === 'replace');
+          if (previous !== -1) effects.splice(previous, 1);
           effects.push({ kind: 'replace', content: context.content });
           return { staged: true };
         },
@@ -71,18 +83,37 @@ export const processingModels: ProcessingModels = {
         },
       }),
     };
+    const editing = step === 'smartEdit' || state.customAction === 'replace';
+    const commenting = step === 'custom' && state.customAction === 'comment';
     let prompt = step === 'smartEdit'
       ? state.prompts.smartEdit || 'Improve this note by organizing content and enhancing readability.'
-      : state.prompts.custom || 'Analyze the following note and add a useful comment.';
+      : state.prompts.custom || (editing ? 'Improve the readability of this note.' : 'Analyze the following note and add a useful comment using createCommentTool.');
     prompt = prompt.replaceAll('{note}', note.content).replaceAll('{tags}', tagPaths.join(', '));
     const agent = await AiModelFactory.BaseChatAgent({
-      localTools, withMcpTools: false,
-      extraInstructions: 'Process the current note using the available local tools. Preserve source transcripts. Changes are staged and checked before saving. External actions and deleting notes are not supported here.',
+      localTools: editing ? { updateBlinkoTool: localTools.updateBlinkoTool } : commenting ? {} : localTools,
+      withMcpTools: false,
+      extraInstructions: editing
+        ? 'You are Blinko Note Editor. Follow the user editing instructions. Return only the complete replacement note body, or stage it with updateBlinkoTool. The application automatically saves the result to the current note. Do not return commentary, explanations, tag lists or a second version. Preserve all relevant details without inventing facts. Do not append the original transcript unless explicitly requested. Audio, existing tags and revision history are preserved separately. No confirmation is needed.'
+        : commenting
+          ? 'You are Blinko Custom Comment Assistant. Follow the user instructions and return only the comment to save.'
+          : 'You are Blinko Custom Processing Assistant. Execute the requested action using the available local tools. Changes are staged and saved automatically. Prior note content is kept in revision history; do not append original transcripts unless requested. Plain text alone does not execute an action. External actions and deleting notes are not supported here.',
     });
     const result = await agent.generate([
       { role: 'user', content: `${prompt}\n\nNote ID: ${note.id}\nNote content:\n${note.content}` },
     ], { abortSignal: signal });
-    if (!effects.length && result.text.trim()) effects.push({ kind: 'comment', content: result.text.trim() });
+    if (!effects.length && result.text.trim() && (editing || commenting)) {
+      effects.push({ kind: editing ? 'replace' : 'comment', content: result.text.trim() });
+    }
+    if (state.mode === 'smartEditTags') {
+      for (const effect of effects) if (effect.kind === 'replace') effect.content = withoutTagOnlyLines(effect.content);
+    }
+    if (!effects.length || effects.some(effect => !effect.content.trim())) throw new Error('NO_PROCESSING_ACTION');
+    if (process.env.NOTE_PROCESSING_DEBUG === '1') console.info('note-processing', {
+      noteId: note.id, postProcessingMode: state.mode, phase: step,
+      toolsOffered: editing ? ['updateBlinkoTool'] : commenting ? [] : Object.keys(localTools),
+      toolChoice: 'auto', modelReturnedToolCalls: !!result.toolCalls?.length,
+      selectedAction: effects.map(effect => effect.kind),
+    });
     return effects;
   },
 

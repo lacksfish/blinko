@@ -16,6 +16,7 @@ export interface ProcessingState {
   audio: ProcessingAudio[];
   post: boolean;
   mode: string;
+  customAction?: 'tools' | 'replace' | 'comment';
   prompts: { comment?: string; tags?: string; smartEdit?: string; custom?: string };
   done: ProcessingStep[];
   postError?: string;
@@ -75,7 +76,8 @@ export function mergeTranscriptAppend(base: string, edited: string, current: str
 
 export function processingSteps(state: ProcessingState): ProcessingStep[] {
   if (!state.post) return [];
-  if (state.mode === 'both') return ['comment', 'tags', 'smartEdit'];
+  if (state.mode === 'both') return ['comment', 'tags'];
+  if (state.mode === 'smartEditTags') return ['smartEdit', 'tags'];
   return [(['comment', 'tags', 'smartEdit', 'custom'].includes(state.mode) ? state.mode : 'comment') as ProcessingStep];
 }
 
@@ -102,6 +104,9 @@ export async function runNoteProcessing(store: ProcessingStore, models: Processi
       const text = await withProcessingTimeout(() => models.transcribe(audio, current!.state.voiceModelId!));
       if (typeof text !== 'string') throw new Error('INVALID_TRANSCRIPTION');
       await store.saveAudio(audio, text.trim());
+      if (process.env.NOTE_PROCESSING_DEBUG === '1') console.info('note-processing', {
+        noteId: current.note.id, postProcessingMode: current.state.mode, phase: 'transcription',
+      });
     } catch {
       await store.failAudio(audio, 'TRANSCRIPTION_FAILED');
     }

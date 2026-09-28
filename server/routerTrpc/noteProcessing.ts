@@ -50,6 +50,7 @@ export const processingControl = authProcedure.input(z.object({
       state.post = true;
       const settings = createProcessingState(config, Number(ctx.id), [], { manual: true });
       state.mode = settings.mode;
+      state.customAction = settings.customAction;
       state.prompts = settings.prompts;
     }
     if (input.action === 'retry') {
