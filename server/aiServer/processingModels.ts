@@ -20,7 +20,11 @@ export const processingModels: ProcessingModels = {
   },
 
   async post(step, note, state) {
-    const signal = AbortSignal.timeout(120_000);
+    const configuredTimeout = Number(process.env.AI_PROCESSING_TIMEOUT_MS) || 120_000;
+    const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+      ? configuredTimeout
+      : 120_000;
+    const signal = AbortSignal.timeout(timeoutMs);
     const ownedTags = await prisma.tag.findMany({ where: { accountId: note.accountId } });
     const tagPaths = helper.buildHashTagTreeFromDb(ownedTags).flatMap(root => helper.generateTagPaths(root));
     if (step === 'comment') {
